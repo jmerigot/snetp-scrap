@@ -7,10 +7,12 @@ class PdfItem(Item):
 
 class PDFSpider(scrapy.Spider):
     name = "pdfspider"
-    start_urls = ["http://snetp.eu/repository/"]  # Change this if needed
+    start_urls = ["http://snetp.eu/repository/"]
 
     def parse(self, response):
-        """Extracts all download links and sends them to pipelines."""
+        """
+        Extracts all download links and sends them to pipelines.
+        """
         for document in response.css("div"):
             pdf_link = document.css("a:contains('Download')::attr(href)").get()
             if pdf_link:
