@@ -5,8 +5,47 @@
 
 
 # useful for handling different item types with a single interface
-from itemadapter import ItemAdapter
+#from itemadapter import ItemAdapter
+import os
+import requests
+from google.cloud import storage
+from scrapy.exceptions import DropItem
 
+# Load Google Cloud Storage bucket name
+BUCKET_NAME = "snetp-pdfs"  # Change this to your actual GCS bucket name
+
+# Authenticate with GCS
+GCS_KEY_PATH = "C:\\Users\\jules\\.gcp_keys\\scrapy-gcs-key.json"
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = GCS_KEY_PATH
+
+# Initialize GCS client
+storage_client = storage.Client()
+bucket = storage_client.bucket(BUCKET_NAME)
+
+class GoogleCloudStoragePipeline:
+    """Pipeline that downloads PDFs and uploads them directly to GCS."""
+
+    def process_item(self, item, spider):
+        """Processes each Scrapy item, downloads the PDF, and uploads to GCS."""
+        if "file_urls" in item:
+            for file_url in item["file_urls"]:
+                self.upload_to_gcs(file_url)
+            return item
+        else:
+            raise DropItem("Missing file URL in item")
+
+    def upload_to_gcs(self, file_url):
+        """Downloads the PDF and streams it directly to Google Cloud Storage."""
+        filename = file_url.split("/")[-1]  # Extract filename
+        blob = bucket.blob(filename)  # Create a new file in GCS
+
+        # Stream the file directly to Google Cloud Storage
+        response = requests.get(file_url, stream=True)
+        if response.status_code == 200:
+            blob.upload_from_string(response.content, content_type="application/pdf")
+            print(f"✅ Uploaded {filename} to GCS: {BUCKET_NAME}")
+        else:
+            print(f"❌ Failed to download {file_url}")
 
 class PdfcrawlerPipeline:
     def process_item(self, item, spider):
