@@ -27,7 +27,7 @@ ROBOTSTXT_OBEY = False
 # See also autothrottle settings and docs
 
 # Crawl responsibly (adjust delay to prevent bans)
-DOWNLOAD_DELAY = 1.5
+DOWNLOAD_DELAY = 2
 
 # The download delay setting will honor only one of:
 #CONCURRENT_REQUESTS_PER_DOMAIN = 16
@@ -53,9 +53,20 @@ DOWNLOAD_DELAY = 1.5
 
 # Enable or disable downloader middlewares
 # See https://docs.scrapy.org/en/latest/topics/downloader-middleware.html
-#DOWNLOADER_MIDDLEWARES = {
-#    "pdfcrawler.middlewares.PdfcrawlerDownloaderMiddleware": 543,
-#}
+
+# Enable Playwright as a download handler
+
+DOWNLOAD_HANDLERS = {
+    "http": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
+    "https": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
+}
+
+# Enable Playwright middleware
+DOWNLOADER_MIDDLEWARES = {
+    "pdfcrawler.middlewares.PdfcrawlerDownloaderMiddleware": 543,
+#    "scrapy_playwright.middleware.PlaywrightMiddleware": 800,
+}
+
 
 # Enable or disable extensions
 # See https://docs.scrapy.org/en/latest/topics/extensions.html

@@ -8,15 +8,17 @@
 #from itemadapter import ItemAdapter
 
 import os
-import requests
+import time
 from google.cloud import storage
 from scrapy.exceptions import DropItem
+import hashlib
+from urllib.parse import urlparse
 
 # Load Google Cloud Storage bucket name
 BUCKET_NAME = "snetp-pdfs"
 
 # Authenticate with GCS
-GCS_KEY_PATH = "C:\\Users\\jules\\.gcp_keys\\scrapy-gcs-key.json"
+GCS_KEY_PATH = "C:\\Users\\jules\\.gcp_keys\\snetp-scrapy-gcs-key.json"
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = GCS_KEY_PATH
 
 # Initialize GCS client
@@ -25,35 +27,77 @@ bucket = storage_client.bucket(BUCKET_NAME)
 
 class GoogleCloudStoragePipeline:
     """
-    Pipeline that downloads PDFs and uploads them directly to GCS bucket.
+    Pipeline that uploads locally downloaded PDFs to GCS bucket.
     """
-
+    
+    def __init__(self):
+        self.files_processed = 0
+        self.files_uploaded = 0
+        self.files_failed = 0
+    
     def process_item(self, item, spider):
         """
-        Processes each Scrapy item, downloads the PDF, and uploads to GCS bucket.
+        Processes each Scrapy item and uploads the local file to GCS bucket.
         """
-        if "file_urls" in item:
-            for file_url in item["file_urls"]:
-                self.upload_to_gcs(file_url)
-            return item
+        if "file_path" not in item or not item["file_path"]:
+            raise DropItem("Missing file path in item")
+        
+        local_file_path = item["file_path"]
+        
+        # Generate a more descriptive filename for GCS
+        if "title" in item and item["title"]:
+            # Clean the title to use as filename
+            safe_title = "".join(c if c.isalnum() or c in " -_" else "_" for c in item["title"])
+            safe_title = safe_title.replace(" ", "_")[:100]  # Limit length
+            filename = f"{safe_title}.pdf"
         else:
-            raise DropItem("Missing file URL in item")
-
-    def upload_to_gcs(self, file_url):
-        """
-        Downloads the PDF and streams it directly to GCS bucket.
-        """
-        filename = file_url.split("/")[-1]  # Extract filename
-        blob = bucket.blob(filename)  # Create new file in GCS
-
-        # Stream the file directly to GCS
-        response = requests.get(file_url, stream=True)
-        if response.status_code == 200:
-            blob.upload_from_string(response.content, content_type="application/pdf")
-            print(f"Uploaded {filename} to GCS: {BUCKET_NAME}")
+            # Use the original filename
+            filename = os.path.basename(local_file_path)
+        
+        # Upload to GCS with metadata
+        success = self.upload_local_file_to_gcs(local_file_path, filename, item)
+        
+        if success:
+            self.files_uploaded += 1
+            spider.log(f"Uploaded {filename} to GCS bucket ({self.files_uploaded}/{self.files_processed})")
+            if os.path.exists(local_file_path):
+                os.remove(local_file_path)
         else:
-            print(f"Failed to download {file_url}")
-
-class PdfcrawlerPipeline:
-    def process_item(self, item, spider):
+            self.files_failed += 1
+            spider.log(f"FAILED to upload {filename} ({self.files_failed} failures)")
+        
         return item
+    
+    def upload_local_file_to_gcs(self, local_file_path, filename, item):
+        """
+        Uploads a local file to GCS bucket with metadata.
+        """
+        try:
+            self.files_processed += 1
+            
+            # Create new file in GCS
+            blob = bucket.blob(filename)
+            
+            # Add metadata if available
+            metadata = {}
+            if "title" in item:
+                metadata["title"] = item["title"]
+            if "author" in item:
+                metadata["author"] = item["author"]
+            if "tags" in item and item["tags"]:
+                metadata["tags"] = ", ".join(item["tags"])
+            if "source_page" in item:
+                metadata["source_page"] = item["source_page"]
+            
+            # Set metadata
+            blob.metadata = metadata
+            
+            # Upload local file to GCS
+            blob.upload_from_filename(local_file_path)
+            
+            # Wait briefly before next upload to avoid rate limiting
+            time.sleep(1)
+            return True
+        except Exception as e:
+            print(f"Error uploading to GCS: {e}")
+            return False
