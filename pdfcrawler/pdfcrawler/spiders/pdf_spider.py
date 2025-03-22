@@ -3,6 +3,8 @@ from scrapy_playwright.page import PageMethod
 import time
 import os
 
+# DOES NOT WORK BECAUSE OF reCAPTCHA :(
+
 class PDFSpider(scrapy.Spider):
     name = "pdfspider"
     start_urls = ["http://snetp.eu/repository/"]
